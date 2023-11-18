@@ -83,7 +83,8 @@ def remove_bg(png_path):
     print('######################### path')
     out_base = os.path.splitext(os.path.basename(png_path))[0]
     out_dir = os.path.dirname(png_path)
-    out_rgba = os.path.join(out_dir, out_base + '_rm.png')
+    # out_rgba = os.path.join(out_dir, out_base + '_rm.png')
+    out_rgba = os.path.join(out_dir, out_base[:-13] + 'rm.png')
     print(out_base)
     print(out_dir)
     print(out_rgba)
