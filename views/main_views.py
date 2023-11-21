@@ -1,10 +1,12 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, current_app
 from omegaconf import OmegaConf
 from utils import Step1
 from utils2 import Step2
 from thumbnail import obj_to_fbx, obj_to_thumbnail, remove_bg
 import os
 import shutil
+from config import db
+from sqlalchemy import create_engine, text
 
 bp = Blueprint('main', __name__, url_prefix='/')
 
@@ -12,6 +14,51 @@ bp = Blueprint('main', __name__, url_prefix='/')
 @bp.route('/obj')
 def hello_pybo():
     return 'make_3d_obj'
+
+@bp.route('/db', methods=['POST'])
+def dbtest():
+    try:
+        data = request.get_json()
+
+        # Create a connection from the engine
+        connection = current_app.database.connect()
+
+        query = text("""
+            INSERT INTO generate_ai_path (
+                objName,
+                fileName,
+                fbxName,
+                textureName,
+                objType,
+                MakeTimeStamp
+            ) VALUES (
+                :objName,
+                :fileName,
+                :fbxName,
+                :textureName,
+                :objType,
+                :MakeTimeStamp
+            )
+        """)
+
+        new_data = connection.execute(query, {
+            'objName': data.get('objName'),
+            'fileName': data.get('fileName'),
+            'fbxName': data.get('fbxName'),
+            'textureName': data.get('textureName'),
+            'objType': data.get('objType'),
+            'MakeTimeStamp': data.get('MakeTimeStamp')
+        })
+
+        # Commit the transaction
+        connection.commit()
+
+        # Close the connection
+        connection.close()
+
+        return 'make_3d_obj'
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 
 @bp.route('/text2obj', methods=['GET', 'POST'])
@@ -21,7 +68,7 @@ def text_to_obj():
     prompt = prompt_txt['prompt']
     print(prompt)
     
-    config_path = "/workspace/configs/text_mv.yaml"
+    config_path = "configs/text_mv.yaml"
     
     opt = OmegaConf.load(config_path)
     opt.prompt = 'whole photo, a cute DSLR photo of ' + prompt
@@ -73,4 +120,42 @@ def text_to_obj():
     shutil.move(opt.outdir + '/' + opt.save_path + '_mesh.fbx', 'static/text3d/fbx')
     shutil.move(opt.outdir + '/' + opt.save_path + '_rm.png', 'static/text3d/thumb')
     shutil.move(opt.outdir + '/' + opt.save_path + '_mesh_albedo.png', 'static/text3d/texture')
+
+    # MySQL 데이터베이스에 정보 저장
+    make_time = prompt_txt['MakeTimeStamp']
+    connection = current_app.database.connect()
+
+    query = text("""
+        INSERT INTO generate_ai_path (
+            objName,
+            fileName,
+            fbxName,
+            textureName,
+            objType,
+            MakeTimeStamp
+        ) VALUES (
+            :objName,
+            :fileName,
+            :fbxName,
+            :textureName,
+            :objType,
+            :MakeTimeStamp
+        )
+    """)
+
+    new_data = connection.execute(query, {
+        'objName': prompt,
+        'fileName': '/home/meta-ai2/bibimpang_serve/static/text3d/thumb/'+prompt+'_rm.png', # thumbnail
+        'fbxName': '/home/meta-ai2/bibimpang_serve/static/text3d/fbx/'+prompt+'_mesh.fbx',
+        'textureName': '/home/meta-ai2/bibimpang_serve/static/text3d/texture/'+prompt+'_albedo.png',
+        'objType': 'TS3',
+        'MakeTimeStamp': make_time
+    })
+
+    # Commit the transaction
+    connection.commit()
+
+    # Close the connection
+    connection.close()
+
     return 'finish_create_obj'
