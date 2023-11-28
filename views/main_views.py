@@ -7,6 +7,9 @@ import os
 import shutil
 from config import db
 from sqlalchemy import create_engine, text
+import deepl
+
+translator = deepl.Translator("a3e08092-e802-0017-285a-dc6070362a23:fx")
 
 bp = Blueprint('main', __name__, url_prefix='/')
 
@@ -65,15 +68,19 @@ def dbtest():
 def text_to_obj():
     prompt_txt = request.get_json()
     # print(prompt)
-    prompt = prompt_txt['prompt']
+    prompt = prompt_txt['Prompt']
+    timestamp = prompt_txt['MakeTimeStamp']
     print(prompt)
     
     config_path = "configs/text_mv.yaml"
     
+    prompt = str(translator.translate_text(prompt, target_lang="en-us"))
+    
     opt = OmegaConf.load(config_path)
-    opt.prompt = 'whole photo, a cute DSLR photo of ' + prompt
-    opt.save_path = prompt
-    opt.outdir = 'static/text3d/'+prompt
+    opt.prompt = 'full shot, a cute whole DSLR photo of ' + prompt
+    opt.save_path = timestamp+'_'+prompt
+    opt.outdir = 'static/text3d/'+timestamp+'_'+prompt
+    # opt.outdir = 'static/text3d/'+prompt
     os.makedirs(opt.outdir, exist_ok=True)
     
     print('############################ path')
@@ -85,7 +92,7 @@ def text_to_obj():
 
     step1.train(opt.iters)   
     
-    ################################## train_2
+    # ################################## train_2
     if opt.mesh is None:
         default_path = os.path.join(opt.outdir, opt.save_path + '_mesh.' + opt.mesh_format)
         if os.path.exists(default_path):
@@ -94,7 +101,7 @@ def text_to_obj():
             raise ValueError(f"Cannot find mesh from {default_path}, must specify --mesh explicitly!")
     print(opt.mesh)
     
-    # step2까지 사용할지 결정하기
+    # # step2까지 사용할지 결정하기
     # step2 = Step2(opt)
     
     # step2.train(opt.iters_refine)
@@ -122,7 +129,7 @@ def text_to_obj():
     shutil.move(opt.outdir + '/' + opt.save_path + '_mesh_albedo.png', 'static/text3d/texture')
 
     # MySQL 데이터베이스에 정보 저장
-    make_time = prompt_txt['MakeTimeStamp']
+    # make_time = prompt_txt['MakeTimeStamp']
     connection = current_app.database.connect()
 
     query = text("""
@@ -144,12 +151,12 @@ def text_to_obj():
     """)
 
     new_data = connection.execute(query, {
-        'objName': prompt,
-        'fileName': '/home/meta-ai2/bibimpang_serve/static/text3d/thumb/'+prompt+'_rm.png', # thumbnail
-        'fbxName': '/home/meta-ai2/bibimpang_serve/static/text3d/fbx/'+prompt+'_mesh.fbx',
-        'textureName': '/home/meta-ai2/bibimpang_serve/static/text3d/texture/'+prompt+'_albedo.png',
+        'objName': opt.save_path+'_rm', #'/home/meta-ai2/bibimpang_serve/'+opt.outdir+'_mesh.obj',
+        'fileName': opt.save_path+'_rm', # thumbnail
+        'fbxName': opt.save_path+'_mesh.fbx',
+        'textureName': opt.save_path+'_mesh_albedo.png',
         'objType': 'TS3',
-        'MakeTimeStamp': make_time
+        'MakeTimeStamp': timestamp
     })
 
     # Commit the transaction
